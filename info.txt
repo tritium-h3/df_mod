@@ -1,0 +1,8 @@
+[ID:llm_lore]
+[NUMERIC_VERSION:1]
+[DISPLAYED_VERSION:0.1.0]
+[EARLIEST_COMPATIBLE_NUMERIC_VERSION:1]
+[EARLIEST_COMPATIBLE_DISPLAYED_VERSION:0.1.0]
+[AUTHOR:tritium]
+[NAME:LLM Lore]
+[DESCRIPTION:DFHack mod that asks a local LLM server to write evocative descriptions for items. Requires DFHack. Does not need to be enabled in a world.]
