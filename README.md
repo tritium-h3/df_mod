@@ -65,9 +65,26 @@ What mattered:
   a place.
 * **Rules against invented events and places** (raids, cave-ins, burials,
   treasuries) cut those out with no loss of flavour.
-* **A name check backs up the prompt.** If the text contains a capitalised word
-  that appears nowhere in the facts and doesn't start a sentence (nearly always
-  an invented dwarf), the description is regenerated once.
+* **Asking for "wear and traces" made everything dusty and scratched,** and
+  every description fell into one formula: place, then "the maker shaped it
+  with care, but now...", then "a hauler just bumped it". What fixed it:
+  * stating the item's real condition (usually "in good repair, no wear")
+  * saying what each room is for (a meeting hall is where dwarves drink and
+    dance, not where they "discuss mining quotas") and what each stockpile
+    holds; taverns, temples, hospitals and the like come through by name
+  * giving each description one randomly chosen focus (material, daily use,
+    surroundings, the dwarf who has it, craftsmanship); books always focus on
+    their contents
+* **Length follows what there is to say:** one or two sentences for everyday
+  items, two or three for fine or decorated ones, three or four for artifacts,
+  and four to six for books, whose title, genre, author, style and subjects
+  (civilizations, figures, historical events) are read from the game. Giving
+  artifacts six sentences with nothing to fill them made the model invent.
+* **A check backs up the prompt.** If the text contains a capitalised word that
+  appears nowhere in the facts and doesn't start a sentence (nearly always an
+  invented dwarf), or a stock phrase like "a testament to" or "a reminder of",
+  the description is regenerated, up to three tries. If every try has a problem,
+  the offending sentences are dropped.
 
 ### Running an eval
 
