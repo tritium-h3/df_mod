@@ -29,13 +29,16 @@ folder). Edit it, then run `llm-lore reload` in the DFHack console.
 | `model` | model name, e.g. `gemma3:12b` |
 | `system_prompt` | the instructions the model follows (change the style here) |
 | `only_constructed` | only describe artifacts and built/crafted items, not raw materials like boulders, bars or wood (default `true`) |
+| `rewrite_on_change` | rewrite a description when the item changes hands, moves to another room, building or stockpile, wears, or gains decorations (default `true`) |
 | `auto_generate` | generate as soon as an item sheet opens (otherwise press Ctrl-R) |
 | `temperature`, `max_tokens`, `timeout_seconds` | generation settings |
 
 ## Use
 
-* Open any item's sheet. The Chronicle panel shows the description, or a
+* Open any item's sheet. The Chronicle panel shows its description, or a
   "writing..." note while the model is busy. **Ctrl-R** rewrites it.
+* If the item has changed hands or moved since its description was written,
+  the old text stays up, marked as updating, while a new one is written.
 * Move or disable the panel with `gui/overlay` or `gui/control-panel`
   (the overlay is `llm-lore.chronicle`).
 * Console commands: `llm-lore status | test | describe | rewrite | clear | reload`.

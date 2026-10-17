@@ -23,6 +23,8 @@ DEFAULT_CONFIG = {
     timeout_seconds=120,
     -- generate automatically when an item sheet is opened
     auto_generate=true,
+    -- rewrite a description when the item changes hands, moves, or wears
+    rewrite_on_change=true,
     -- only describe artifacts and built/crafted items (not boulders, bars, ...)
     only_constructed=true,
     -- tuned against devel/llm-lore-eval; see README "Prompt notes"

@@ -511,6 +511,57 @@ end
 ---------------------------------------------------------------------------
 -- generation
 
+-- A compact record of the item's situation: who has it and how, who owns it,
+-- where it is, its wear and decorations. Uses ids rather than text so that,
+-- say, a dwarf changing profession doesn't count as a change. Returns nil
+-- while the item is in transit (being hauled, or inside something carried),
+-- since that's temporary.
+function get_fingerprint(item)
+    local parts = {}
+    local unit = dfhack.items.getHolderUnit(item)
+    if unit then
+        local role
+        for _, inv in ipairs(unit.inventory) do
+            if inv.item == item then role = df.inv_item_role_type[inv.mode] end
+        end
+        if not role or role == 'Hauled' then return nil end
+        table.insert(parts, ('u%d:%s'):format(unit.id, role))
+    end
+    local owner = dfhack.items.getOwner(item)
+    if owner then table.insert(parts, 'o' .. owner.id) end
+    local bld = dfhack.items.getHolderBuilding(item)
+    if bld then table.insert(parts, 'b' .. bld.id) end
+    if not unit then
+        local pos = xyz2pos(dfhack.items.getPosition(item))
+        if pos.x >= 0 then
+            local at = dfhack.buildings.findAtTile(pos)
+            if at and df.building_stockpilest:is_instance(at) then table.insert(parts, 's' .. at.id) end
+            for _, zone in ipairs(dfhack.buildings.findCivzonesAt(pos) or {}) do
+                table.insert(parts, 'z' .. zone.id)
+            end
+        end
+    end
+    table.insert(parts, 'w' .. item.wear)
+    local ok, improvements = pcall(function() return item.improvements end)
+    table.insert(parts, 'i' .. (ok and improvements and #improvements or 0))
+    return table.concat(parts, ',')
+end
+
+-- true if the item's situation has changed since its description was written
+function is_stale(item, entry)
+    if not entry or not get_config().rewrite_on_change then return false end
+    local fp = get_fingerprint(item)
+    if not fp then return false end
+    if not entry.fingerprint then
+        -- written before fingerprints existed: adopt the current one rather
+        -- than rewriting everything at once
+        entry.fingerprint = fp
+        save_entry(item.id, entry)
+        return false
+    end
+    return entry.fingerprint ~= fp
+end
+
 -- Artifacts and anything a dwarf built or crafted (furniture, weapons, armor,
 -- crafts, statues, ...). Raw materials like boulders, bars, wood and food
 -- aren't interesting enough for the chronicler.
@@ -588,6 +639,8 @@ function generate(item, force, on_done)
     if not force and get_entry(id) then return end
     local model = get_config().model
     local gen = world_gen
+    -- taken now, so it matches the facts the description is written from
+    local fingerprint = get_fingerprint(item)
     pending[id], errors[id] = true, nil
     describe(item, nil, function(text, err)
         if gen ~= world_gen then return end
@@ -596,7 +649,7 @@ function generate(item, force, on_done)
             errors[id] = err
             dfhack.printerr(('llm-lore: item %d: %s'):format(id, err))
         else
-            save_entry(id, {text=text, model=model})
+            save_entry(id, {text=text, model=model, fingerprint=fingerprint})
         end
         if on_done then on_done(text, err) end
     end)
@@ -617,7 +670,7 @@ end
 function get_status_text(item_id)
     local entry = get_entry(item_id)
     if pending[item_id] then
-        return entry and 'The chronicler is rewriting this entry...'
+        return entry and (to_display(entry.text) .. ' [The chronicler is updating this entry...]')
                 or 'The chronicler is writing...'
     end
     if errors[item_id] then
@@ -673,9 +726,19 @@ end
 function LoreOverlay:overlay_onupdate()
     local item = dfhack.gui.getSelectedItem(true)
     local id = item and item.id or -1
-    if id ~= self.item_id then
-        self.item_id = id
-        if is_describable(item) and get_config().auto_generate then generate(item, false) end
+    -- also recheck periodically: reopening the same item doesn't change the
+    -- selection, and its situation may have changed in the meantime
+    local now = dfhack.getTickCount() / 1000
+    if id ~= self.item_id or now - (self.checked_at or 0) > 2 then
+        self.item_id, self.checked_at = id, now
+        if is_describable(item) then
+            local entry = get_entry(id)
+            if is_stale(item, entry) then
+                generate(item, true)
+            elseif get_config().auto_generate then
+                generate(item, false)
+            end
+        end
     end
     local text = id >= 0 and get_status_text(id) or ''
     if text ~= self.shown then
