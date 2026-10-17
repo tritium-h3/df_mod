@@ -507,19 +507,58 @@ local function choose_focus(item, has_maker, importance, has_writing)
     return options[math.random(#options)]
 end
 
+-- DF names bins, barrels and bags after their contents ("Bar/Block Bin",
+-- "dwarven ale Barrel", "walnuts Bag"), which the model read as materials
+-- ("the tower-cap bars sit neatly..."). Describe them plainly instead and
+-- list what's really inside.
+local CONTAINER_WORDS = {BIN='bin', BARREL='barrel', BAG='bag'}
+local MAX_CONTENT_KINDS = 4
+
+local function get_contents_fact(item)
+    local counts, order = {}, {}
+    for _, inside in ipairs(dfhack.items.getContainedItems(item)) do
+        -- drop stack sizes like "[7]" so identical things group together
+        local desc = utf(dfhack.items.getDescription(inside, 0, false)):gsub('%s*%[%d+%]', '')
+        if not counts[desc] then table.insert(order, desc) end
+        counts[desc] = (counts[desc] or 0) + 1
+    end
+    if #order == 0 then
+        return CONTAINER_WORDS[df.item_type[item:getType()]] and 'It is empty' or nil
+    end
+    table.sort(order, function(a, b) return counts[a] > counts[b] end)
+    local parts = {}
+    for i = 1, math.min(MAX_CONTENT_KINDS, #order) do
+        local desc = order[i]
+        table.insert(parts, counts[desc] > 1 and ('%s (%d lots)'):format(desc, counts[desc]) or desc)
+    end
+    if #order > MAX_CONTENT_KINDS then
+        table.insert(parts, ('and %d other kinds of thing'):format(#order - MAX_CONTENT_KINDS))
+    end
+    return 'It holds: ' .. table.concat(parts, ', ')
+end
+
+local function get_item_name(item)
+    -- artifacts need the readable form for their names
+    if item.flags.artifact then return utf(dfhack.items.getReadableDescription(item)) end
+    local word = CONTAINER_WORDS[df.item_type[item:getType()]]
+    if word then
+        local mat = get_material(item:getActualMaterial(), item:getActualMaterialIndex())
+        return mat and (mat .. ' ' .. word) or word
+    end
+    -- the undecorated form avoids quality symbols like x*<name>*x; drop
+    -- player labels like "<#3>"
+    return (utf(dfhack.items.getDescription(item, 0, false)):gsub('%s*<#%d+>', ''))
+end
+
 -- opts (optional, for experiments): system_prompt=, include_usage=false,
 -- include_people=false, focus=
 function build_messages(item, opts)
     opts = opts or {}
     local cfg = get_config()
-    -- artifacts need the readable form for their names; for everything else
-    -- the undecorated form avoids quality symbols like x*<name>*x
-    local name = item.flags.artifact and dfhack.items.getReadableDescription(item)
-            or dfhack.items.getDescription(item, 0, false)
-    -- drop player bin/barrel labels like "<#3>"
-    name = name:gsub('%s*<#%d+>', '')
-    local lines = {'Item: ' .. utf(name)}
+    local lines = {'Item: ' .. get_item_name(item)}
     for _, fact in ipairs(get_item_facts(item)) do table.insert(lines, fact) end
+    local contents = get_contents_fact(item)
+    if contents then table.insert(lines, contents) end
     local site = get_site_name()
     if site then table.insert(lines, 'Fortress: ' .. site) end
     local written = get_written_facts(item)
@@ -583,6 +622,15 @@ function get_fingerprint(item)
     table.insert(parts, 'w' .. item.wear)
     local ok, improvements = pcall(function() return item.improvements end)
     table.insert(parts, 'i' .. (ok and improvements and #improvements or 0))
+    -- DF labels bins, barrels and bags by the kind of thing they hold ("Bar/
+    -- Block Bin", "dwarven ale Barrel"). The label changes when the kind of
+    -- contents does, not each time something is added, so it's a good
+    -- signal for rewriting without churning busy stockpile bins.
+    local itype = df.item_type[item:getType()]
+    if itype == 'BIN' or itype == 'BARREL' or itype == 'BAG' then
+        local label = dfhack.items.getDescription(item, 0, false):gsub('%s*<#%d+>', '')
+        table.insert(parts, 'c' .. label)
+    end
     return table.concat(parts, ',')
 end
 
