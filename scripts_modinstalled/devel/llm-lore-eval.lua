@@ -52,7 +52,8 @@ local function run(i)
     end
     local job = queue[i]
     local t0 = os.time()
-    local opts = {system_prompt=job.variant.system_prompt, include_usage=job.variant.include_usage}
+    local opts = {system_prompt=job.variant.system_prompt, include_usage=job.variant.include_usage,
+                  include_people=job.variant.include_people, focus=job.variant.focus}
     local describe = job.variant.no_retry and function(item, o, cb)
         local messages = lore.build_messages(item, o)
         backend.chat(base_cfg, messages, function(text, err) cb(text, err, messages) end)

@@ -83,11 +83,29 @@ What mattered:
   and four to six for books, whose title, genre, author, style and subjects
   (civilizations, figures, historical events) are read from the game. Giving
   artifacts six sentences with nothing to fill them made the model invent.
-* **A check backs up the prompt.** If the text contains a capitalised word that
-  appears nowhere in the facts and doesn't start a sentence (nearly always an
-  invented dwarf), or a stock phrase like "a testament to" or "a reminder of",
+* **Personality makes owners and wearers into people.** Without it the model
+  guessed ("he's asked for better boots") or fell back on generic contentment.
+  Each dwarf who holds the item, owns it, or owns its room (never the maker)
+  gets one line, built in `internal/llm-lore/personality.lua`:
+  * two facets picked at random from their four most extreme (a fixed set made
+    the anxious duke pace in five of his six items)
+  * their strongest value
+  * their dream, only if it's an unusual one (four common dreams covered 92% of
+    dwarves, and naming them made every description wistful about family)
+  * any like that matches this item. Dwarves keep items they like, so this is
+    often the real reason they have it ("is fond of crowns and carries 8 of them")
+
+  Thoughts, moods and needs are left out: they change daily, and a saved
+  description would soon be wrong. Dead tomb owners are marked as dead and
+  described "in life". Invented feelings are welcome if they follow from the
+  facts.
+* **A check backs up the prompt.** Garbled first names next to a correct
+  surname ("Mettob Nirezum") are corrected in place. If the text contains a
+  capitalised word that appears nowhere in the facts and doesn't start a
+  sentence, or a full name half of which is unknown (nearly always an invented
+  dwarf), or a stock phrase like "a testament to" or "a reminder of",
   the description is regenerated, up to three tries. If every try has a problem,
-  the offending sentences are dropped.
+  the offending sentences after the first are dropped.
 
 ### Running an eval
 

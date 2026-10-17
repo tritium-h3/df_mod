@@ -3,6 +3,7 @@
 --@ module = true
 
 local backend = reqscript('internal/llm-lore/backend')
+local personality = reqscript('internal/llm-lore/personality')
 local argparse = require('argparse')
 local gui = require('gui')
 local overlay = require('plugins.overlay')
@@ -172,7 +173,9 @@ local function describe_unit(unit)
         name = name .. ', a citizen of the fortress'
     end
     local sex = sex_word(unit.sex)
-    return sex and ('%s (%s)'):format(name, sex) or name
+    name = sex and ('%s (%s)'):format(name, sex) or name
+    if dfhack.units.isDead(unit) then name = name .. ', now dead' end
+    return name
 end
 
 local INVENTORY_VERBS = {
@@ -450,6 +453,38 @@ function get_importance(item, written_facts)
     return 1
 end
 
+local HOLDER_ROLES = {Worn='wearer', Weapon='wielder', Strapped='wearer', Flask='carrier'}
+
+-- Personality lines for the dwarves the item belongs to: whoever holds it,
+-- its owner, and the owner of the room it's in. Never the maker.
+local function get_people_facts(item)
+    local facts, seen = {}, {}
+    local function add(unit, role)
+        if not unit or seen[unit.id] then return end
+        seen[unit.id] = true
+        local line = personality.describe_person(unit, item, role)
+        if line then table.insert(facts, line) end
+    end
+    local holder = dfhack.items.getHolderUnit(item)
+    if holder then
+        local role
+        for _, inv in ipairs(holder.inventory) do
+            if inv.item == item then role = df.inv_item_role_type[inv.mode] end
+        end
+        if role and role ~= 'Hauled' then add(holder, HOLDER_ROLES[role] or 'carrier') end
+    end
+    add(dfhack.items.getOwner(item), 'owner')
+    if not holder then
+        local pos = xyz2pos(dfhack.items.getPosition(item))
+        if pos.x >= 0 then
+            for _, zone in ipairs(dfhack.buildings.findCivzonesAt(pos) or {}) do
+                if zone.assigned_unit_id >= 0 then add(df.unit.find(zone.assigned_unit_id), 'owner of the room') end
+            end
+        end
+    end
+    return facts
+end
+
 -- One angle per description, so they don't all follow the same
 -- place -> maker -> recent-incident formula.
 local FOCUSES = {
@@ -472,7 +507,8 @@ local function choose_focus(item, has_maker, importance, has_writing)
     return options[math.random(#options)]
 end
 
--- opts (optional, for experiments): system_prompt=, include_usage=false, focus=
+-- opts (optional, for experiments): system_prompt=, include_usage=false,
+-- include_people=false, focus=
 function build_messages(item, opts)
     opts = opts or {}
     local cfg = get_config()
@@ -496,6 +532,9 @@ function build_messages(item, opts)
     end
     if opts.include_usage ~= false then
         for _, fact in ipairs(get_usage_facts(item)) do table.insert(lines, fact) end
+    end
+    if opts.include_people ~= false then
+        for _, fact in ipairs(get_people_facts(item)) do table.insert(lines, fact) end
     end
     for _, fact in ipairs(written) do table.insert(lines, fact) end
     local desc = get_sheet_description(item)
@@ -576,16 +615,38 @@ end
 -- polishes it...") despite instructions; this catches nearly all of them.
 function find_invented_name(text, facts)
     local known = facts:lower()
-    local prev = '.'
+    local prev, prev_name = '.', nil
     for word in text:gmatch('%S+') do
         local name = word:match('^["\'(]*(%u[%a\128-\255]+)')
         -- drop possessives and dashes: "Landhames\u{2019}s", "Olonfikod\u{2014}a"
         name = name and name:gsub('\u{2019}.*$', ''):gsub('\u{2014}.*$', '')
-        if name and #name > 1 and not prev:find('[%.!?:]["\')]*$') and not known:find(name:lower(), 1, true) then
-            return name
+        if name and #name > 1 and not known:find(name:lower(), 1, true) then
+            if not prev:find('[%.!?:]["\')]*$') then return name end
+            -- a sentence-initial word is usually ordinary English, unless it's
+            -- half of a full name: "Mettob Nirezum" (misspelled first name)
         end
+        -- full names: two capitalised words in a row, one of them unknown
+        if name and prev_name and #name > 1 then
+            local a, b = known:find(prev_name:lower(), 1, true), known:find(name:lower(), 1, true)
+            if not a ~= not b then return a and name or prev_name end
+        end
+        prev_name = (name and #name > 1 and not word:find('[%.!?,;:]$')) and name or nil
         prev = word
     end
+end
+
+-- The model often garbles a dwarf's first name while getting the surname
+-- right ("Mettob Nirezum" for "Medtob Nirezum"). When a capitalised word is
+-- followed by a surname from the facts, put the right first name back.
+function fix_misspelled_names(text, facts)
+    local first_for = {}
+    for first, last in facts:gmatch('(%u[%a\128-\255]+) (%u[%a\128-\255]+)') do
+        first_for[last] = first_for[last] or first
+    end
+    return (text:gsub('(%u[%a\128-\255]+) (%u[%a\128-\255]+)', function(first, last)
+        local right = first_for[last]
+        if right and right ~= first then return right .. ' ' .. last end
+    end))
 end
 
 local MAX_ATTEMPTS = 3
@@ -609,7 +670,9 @@ end
 function drop_problem_sentences(text, facts)
     local kept = {}
     for sentence in text:gmatch('[^%.!?]+[%.!?]+["\']?%s*') do
-        if not find_problem(sentence, facts) then table.insert(kept, sentence) end
+        -- never drop the opening sentence: what follows usually leans on it
+        -- ("He's arranged the spears...")
+        if #kept == 0 or not find_problem(sentence, facts) then table.insert(kept, sentence) end
     end
     if #kept == 0 then return text end
     return (table.concat(kept):gsub('%s+$', ''))
@@ -622,6 +685,7 @@ function describe(item, opts, cb)
     local messages = build_messages(item, opts)
     local function attempt(n)
         backend.chat(cfg, messages, function(text, err)
+            if text then text = fix_misspelled_names(text, messages[2].content) end
             if text and find_problem(text, messages[2].content) then
                 if n < MAX_ATTEMPTS then return attempt(n + 1) end
                 text = drop_problem_sentences(text, messages[2].content)

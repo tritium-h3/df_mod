@@ -36,6 +36,7 @@ DEFAULT_CONFIG = {
         '- The only dwarves who may appear are the ones named in the facts, doing only what the facts say. If no one is holding or using the item, it is at rest: do not introduce any particular dwarf. General mentions of fortress life (diners, soldiers, drinkers) are fine.',
         '- The maker made the item in the past; do not show the maker handling it now.',
         '- Use pronouns matching each dwarf\'s sex.',
+        '- When a dwarf\'s personality is given, let it shape how they treat or feel about the item. Invented feelings and habits are welcome if they follow from the facts; never ones that contradict them.',
         '- Match the item\'s condition. An item in good repair is clean and cared for; do not give it dust, scratches, chips or grime.',
         '- Avoid the stock details: haulers bumping or passing it, dust settling, smells lingering, \'faint\' anything. Use one only if it is truly the most telling detail for this item.',
         '- Do not end sentences with explanatory tags such as \'a reminder of...\', \'evidence of...\' or \'a souvenir of...\'.',
